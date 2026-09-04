@@ -28,25 +28,63 @@
   header {
     background: linear-gradient(90deg, var(--blue), var(--orange));
     color: #fff;
-    padding: 10px 14px;
+    padding: 8px 12px;
     flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
   }
-  header h1 { margin: 0; font-size: 16px; }
+  header h1 { margin: 0; font-size: 14px; }
   #status {
     font-size: 12px;
-    margin-top: 4px;
+    margin-top: 2px;
     opacity: 0.9;
   }
+  #toggleScanner {
+    flex: 0 0 auto;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.6);
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  /* iframeの中は画面が狭くて「誰が来た/受付完了」が読み取りにくいという声を受けて、
+     結果はここ(親ページ)に大きく表示する。postMessageでiframeから受け取る。 */
+  #resultBanner {
+    flex: 0 0 auto;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.4;
+    padding: 0 16px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease, padding 0.2s ease;
+  }
+  #resultBanner.show {
+    padding: 14px 16px;
+    max-height: 140px;
+  }
+  #resultBanner.ok { background: var(--green); color: #fff; }
+  #resultBanner.warn { background: var(--orange); color: #fff; }
+  #resultBanner.err { background: var(--red); color: #fff; }
 
   #scannerWrap {
     flex: 0 0 auto;
-    padding: 10px;
+    padding: 8px 10px;
     background: #fff;
     border-bottom: 1px solid #eee;
   }
+  /* カメラ映像が画面の大半を占めて検索欄が隠れる問題への対策:
+     overflow:hiddenで高さを固定し、映像の余分な部分は表示しない(トリミング) */
   #reader {
     width: 100%;
-    max-width: 420px;
+    max-width: 320px;
+    max-height: 190px;
     margin: 0 auto;
     border-radius: 12px;
     overflow: hidden;
@@ -54,17 +92,16 @@
 
   #toast {
     text-align: center;
-    font-size: 14px;
-    padding: 6px 10px;
-    min-height: 20px;
+    font-size: 13px;
+    padding: 4px 10px;
+    min-height: 18px;
+    color: var(--gray);
   }
-  #toast.ok { color: var(--green); font-weight: 600; }
-  #toast.warn { color: var(--orange); font-weight: 600; }
-  #toast.err { color: var(--red); font-weight: 600; }
 
   #receptionFrame {
     flex: 1 1 auto;
     width: 100%;
+    min-height: 40vh;
     border: none;
   }
 </style>
@@ -72,9 +109,14 @@
 <body>
 
 <header>
-  <h1>Tech Conf 2026 受付スキャナー</h1>
-  <div id="status">カメラ起動中…</div>
+  <div>
+    <h1>Tech Conf 2026 受付スキャナー</h1>
+    <div id="status">カメラ起動中…</div>
+  </div>
+  <button id="toggleScanner" type="button">スキャナーを閉じる</button>
 </header>
+
+<div id="resultBanner"></div>
 
 <div id="scannerWrap">
   <div id="reader"></div>
@@ -85,7 +127,6 @@
 
 <script>
   // TODO: GAS(techconf2026-reception-gas)をデプロイしたら、そのWebアプリURLに差し替える
-  // (デプロイ > 新しいデプロイ > ウェブアプリ、で発行される https://script.google.com/macros/s/XXXX/exec 形式)
   var RECEPTION_APP_URL = 'https://script.google.com/a/macros/notainc.com/s/AKfycbxq-LrWsCZEAsFF8UPmFKzNK1Ak4nzSu3D3OPhNacYYG0qTjYgn7SouNf1g6BOHKr-M/exec';
 
   var frame = document.getElementById('receptionFrame');
@@ -101,10 +142,33 @@
   function showToast(msg, kind) {
     var el = document.getElementById('toast');
     el.textContent = msg;
-    el.className = kind || '';
+    el.style.color = { ok: 'var(--green)', warn: 'var(--orange)', err: 'var(--red)' }[kind] || 'var(--gray)';
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(function () { el.textContent = ''; el.className = ''; }, 3000);
+    showToast._t = setTimeout(function () { el.textContent = ''; }, 3000);
   }
+
+  // 受付アプリ(iframe、script.google.com上)からpostMessageで結果を受け取り、
+  // このページ側に大きなバナーで表示する。GASのXFrameOptions(ALLOWALL)により
+  // 埋め込み自体は許可されているが、postMessageの送受信元は念のため限定する。
+  window.addEventListener('message', function (e) {
+    if (e.origin !== 'https://script.google.com') return;
+    var data = e.data;
+    if (!data || data.source !== 'techconf2026-reception') return;
+    var el = document.getElementById('resultBanner');
+    el.textContent = data.message;
+    el.className = 'show ' + data.kind;
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.className = ''; }, 5000);
+  });
+
+  // カメラを一時的に畳んで、下の受付アプリ(検索・結果一覧)を広く見せるためのトグル。
+  // hiddenにしてもvideoの取得自体は止めないので、再度開けばそのままスキャン再開できる。
+  document.getElementById('toggleScanner').addEventListener('click', function () {
+    var wrap = document.getElementById('scannerWrap');
+    var btn = document.getElementById('toggleScanner');
+    wrap.hidden = !wrap.hidden;
+    btn.textContent = wrap.hidden ? 'スキャナーを開く' : 'スキャナーを閉じる';
+  });
 
   // 本番のQRの中身は「受付アプリURL + ?code=TC26-XXXX」という完全なURL
   // (techconf2026-remind-gas/main.gs の fetchQrImageBlob_ が生成)。
@@ -137,7 +201,7 @@
     var scanner = new Html5Qrcode('reader');
     scanner.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      { fps: 10, qrbox: { width: 180, height: 180 } },
       onScanSuccess
     ).then(function () {
       setStatus('スキャン中(QRをカメラに向けてください)');
