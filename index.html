@@ -214,7 +214,7 @@
     var scanner = new Html5Qrcode('reader');
     scanner.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 180, height: 180 } },
+      { fps: 10 }, // qrboxを指定しない=枠線オーバーレイなしでフレーム全体をスキャン
       onScanSuccess
     ).then(function () {
       setStatus('スキャン中(QRをカメラに向けてください)');
