@@ -106,14 +106,29 @@
     showToast._t = setTimeout(function () { el.textContent = ''; el.className = ''; }, 3000);
   }
 
+  // 本番のQRの中身は「受付アプリURL + ?code=TC26-XXXX」という完全なURL
+  // (techconf2026-remind-gas/main.gs の fetchQrImageBlob_ が生成)。
+  // まれに手入力テスト等でコード文字列単体("TC26-XXXX")が読まれるケースにも両対応する。
+  function extractCode_(text) {
+    try {
+      var url = new URL(text);
+      var codeParam = url.searchParams.get('code');
+      if (codeParam) return codeParam;
+    } catch (e) {
+      // 完全なURLでなければコード文字列そのものとして扱う
+    }
+    return String(text || '').trim();
+  }
+
   function onScanSuccess(decodedText) {
     var now = Date.now();
     if (decodedText === lastCode && (now - lastScanAt) < COOLDOWN_MS) return;
     lastCode = decodedText;
     lastScanAt = now;
-    showToast('読み取り: ' + decodedText, 'ok');
+    var code = extractCode_(decodedText);
+    showToast('読み取り: ' + code, 'ok');
     // iframeのsrcを書き換えて再読み込み → GAS側 doGet(e) が ?code= を受け取り自動受付する
-    frame.src = RECEPTION_APP_URL + '?code=' + encodeURIComponent(decodedText);
+    frame.src = RECEPTION_APP_URL + '?code=' + encodeURIComponent(code);
   }
 
   if (RECEPTION_APP_URL.indexOf('REPLACE_ME') !== -1) {
