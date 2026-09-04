@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Tech Conf 2026 受付スキャナー</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha256-ZgsSQ3sddH4+aLi+BoXAjLcoFAEQrSE/FnsUtm+LHY4=" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --blue: #4884DA;
+    --orange: #FFA700;
+    --green: #30A46C;
+    --red: #E5484D;
+    --gray: #696E77;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, "Yu Gothic", sans-serif;
+    background: #f7f7f8;
+    color: #1b1b1f;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: linear-gradient(90deg, var(--blue), var(--orange));
+    color: #fff;
+    padding: 10px 14px;
+    flex: 0 0 auto;
+  }
+  header h1 { margin: 0; font-size: 16px; }
+  #status {
+    font-size: 12px;
+    margin-top: 4px;
+    opacity: 0.9;
+  }
+
+  #scannerWrap {
+    flex: 0 0 auto;
+    padding: 10px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+  }
+  #reader {
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  #toast {
+    text-align: center;
+    font-size: 14px;
+    padding: 6px 10px;
+    min-height: 20px;
+  }
+  #toast.ok { color: var(--green); font-weight: 600; }
+  #toast.warn { color: var(--orange); font-weight: 600; }
+  #toast.err { color: var(--red); font-weight: 600; }
+
+  #receptionFrame {
+    flex: 1 1 auto;
+    width: 100%;
+    border: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tech Conf 2026 受付スキャナー</h1>
+  <div id="status">カメラ起動中…</div>
+</header>
+
+<div id="scannerWrap">
+  <div id="reader"></div>
+  <div id="toast"></div>
+</div>
+
+<iframe id="receptionFrame" title="受付アプリ"></iframe>
+
+<script>
+  // TODO: GAS(techconf2026-reception-gas)をデプロイしたら、そのWebアプリURLに差し替える
+  // (デプロイ > 新しいデプロイ > ウェブアプリ、で発行される https://script.google.com/macros/s/XXXX/exec 形式)
+  var RECEPTION_APP_URL = 'https://script.google.com/macros/s/REPLACE_ME/exec';
+
+  var frame = document.getElementById('receptionFrame');
+  frame.src = RECEPTION_APP_URL;
+
+  var lastCode = '';
+  var lastScanAt = 0;
+  var COOLDOWN_MS = 4000; // 同じQRを連続で読み続けないためのクールダウン
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+  function showToast(msg, kind) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = kind || '';
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function () { el.textContent = ''; el.className = ''; }, 3000);
+  }
+
+  function onScanSuccess(decodedText) {
+    var now = Date.now();
+    if (decodedText === lastCode && (now - lastScanAt) < COOLDOWN_MS) return;
+    lastCode = decodedText;
+    lastScanAt = now;
+    showToast('読み取り: ' + decodedText, 'ok');
+    // iframeのsrcを書き換えて再読み込み → GAS側 doGet(e) が ?code= を受け取り自動受付する
+    frame.src = RECEPTION_APP_URL + '?code=' + encodeURIComponent(decodedText);
+  }
+
+  if (RECEPTION_APP_URL.indexOf('REPLACE_ME') !== -1) {
+    setStatus('未設定: RECEPTION_APP_URL をGASデプロイURLに差し替えてください');
+  } else {
+    var scanner = new Html5Qrcode('reader');
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      onScanSuccess
+    ).then(function () {
+      setStatus('スキャン中(QRをカメラに向けてください)');
+    }).catch(function (err) {
+      setStatus('カメラ起動エラー: ' + err);
+    });
+  }
+</script>
+
+</body>
+</html>
